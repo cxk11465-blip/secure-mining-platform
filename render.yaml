@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: secure-mining-platform
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_LOGIN_CODE
+        sync: false
+      - key: MIN_WITHDRAWAL_AMOUNT
+        value: 10
+      - key: DAILY_WITHDRAWAL_LIMIT
+        value: 3
+      - key: DATABASE_URL
+        sync: false
+      - key: USDT_COLD_WALLET_ADDRESS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: receipts
