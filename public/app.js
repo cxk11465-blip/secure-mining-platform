@@ -338,8 +338,8 @@ function renderAuth() {
   app.innerHTML = `
     <main class="auth-page">
       <section class="auth-card">
-        <h1>安全矿场资金平台</h1>
-        <p>演示版已内置角色权限、资金冻结、审核和审计日志。</p>
+        <h1>稳盈资产管理平台</h1>
+        <p>专业账户体系、资金审核、风控管理与审计追踪，保障每一笔投资流程清晰可查。</p>
         <div class="tabs">
           <button class="${isLogin ? 'active' : ''}" data-auth-tab="login">登录</button>
           <button class="${!isLogin ? 'active' : ''}" data-auth-tab="register">注册</button>
@@ -365,9 +365,9 @@ function renderAuth() {
               <input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
             </div>
           `}
-          <button class="primary" type="submit">${isLogin ? '登录系统' : '创建用户'}</button>
+          <button class="primary" type="submit">${isLogin ? '进入账户中心' : '开通投资账户'}</button>
         </form>
-        <div class="notice">管理员账号是 <strong>admin</strong>。首次启动生成的管理员密码在本地 <strong>data/bootstrap-admin.txt</strong>。</div>
+        <div class="notice">账户安全提示：管理端需使用专属验证码登录，所有资金操作均进入后台风控审核与审计记录。</div>
         ${state.message ? `<div class="error">${esc(state.message)}</div>` : ''}
       </section>
     </main>
@@ -388,13 +388,13 @@ function renderAuth() {
 function layout(content) {
   const items = state.user.role === 'admin'
     ? [['dashboard', '审核台'], ['users', '用户与流水'], ['audit', '审计日志']]
-    : [['dashboard', '资产总览'], ['miners', '矿场'], ['games', '游戏中心'], ['deposit', '充值申请'], ['withdraw', '提现申请']];
+    : [['dashboard', '资产总览'], ['miners', '投资产品'], ['games', '权益任务'], ['deposit', '充值申请'], ['withdraw', '提现申请']];
   app.innerHTML = `
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-title">安全资金平台</div>
-          <div class="brand-sub">${state.user.role === 'admin' ? '管理后台' : '用户工作台'}</div>
+          <div class="brand-title">稳盈资产管理</div>
+          <div class="brand-sub">${state.user.role === 'admin' ? '管理后台' : '投资账户中心'}</div>
         </div>
         <nav class="nav">
           ${items.map(([key, label]) => `<button class="${state.view === key ? 'active' : ''}" data-view="${key}">${label}</button>`).join('')}
