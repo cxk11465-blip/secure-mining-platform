@@ -621,6 +621,15 @@ th {
   font-size: 13px;
 }
 
+.success-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e8f6ef;
+  color: var(--success);
+  font-size: 13px;
+}
+
 .empty {
   padding: 18px;
   color: var(--muted);

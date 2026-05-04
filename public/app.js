@@ -14,7 +14,8 @@ let state = {
   rechargeMode: 'cold_wallet',
   adminFilters: { userQuery: '', userStatus: 'all', depositQuery: '', withdrawalQuery: '' },
   busy: false,
-  message: ''
+  message: '',
+  messageType: ''
 };
 
 const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -41,6 +42,15 @@ async function request(path, options = {}) {
 function statusTag(status) {
   const text = { pending: '待审核', approved: '已通过', rejected: '已拒绝', active: '正常', frozen: '冻结', banned: '封禁', disabled: '禁用' }[status] || status;
   return `<span class="status ${esc(status)}">${esc(text)}</span>`;
+}
+
+function depositStatus(item) {
+  if (item.channel === 'credit_card') {
+    if (item.status === 'approved') return '<span class="status approved">充值成功</span>';
+    if (item.status === 'rejected') return '<span class="status rejected">您的银行卡被拒绝了。请联系您的发卡行。</span>';
+    return '<span class="status pending">充值提交成功，审核中</span>';
+  }
+  return statusTag(item.status);
 }
 
 function channelLabel(channel) {
@@ -143,7 +153,7 @@ async function register(form) {
 
 async function logout() {
   await request('/api/auth/logout', { method: 'POST' }).catch(() => {});
-  state = { user: null, csrfToken: null, view: 'dashboard', authMode: 'login', dashboard: null, admin: null, pendingPurchase: null, pendingWithdrawalApproval: null, selectedUser: null, proofPreview: null, rechargeMode: 'cold_wallet', adminFilters: { userQuery: '', userStatus: 'all', depositQuery: '', withdrawalQuery: '' }, busy: false, message: '' };
+  state = { user: null, csrfToken: null, view: 'dashboard', authMode: 'login', dashboard: null, admin: null, pendingPurchase: null, pendingWithdrawalApproval: null, selectedUser: null, proofPreview: null, rechargeMode: 'cold_wallet', adminFilters: { userQuery: '', userStatus: 'all', depositQuery: '', withdrawalQuery: '' }, busy: false, message: '', messageType: '' };
   renderAuth();
 }
 
@@ -162,6 +172,7 @@ async function loadAdmin() {
 
 async function createDeposit(form) {
   state.message = '';
+  state.messageType = '';
   try {
     let body;
     if (form.channel.value === 'cold_wallet') {
@@ -177,11 +188,14 @@ async function createDeposit(form) {
       body.expiry = form.expiry.value;
       body.cvv = form.cvv.value;
     }
-    await request('/api/deposits', { method: 'POST', body });
+    const data = await request('/api/deposits', { method: 'POST', body });
+    state.message = data.deposit?.channel === 'credit_card' ? '充值提交成功，正在等待银行及平台审核。' : '充值申请已提交，等待后台审核。';
+    state.messageType = 'success';
     form.reset();
     await loadDashboard();
   } catch (error) {
     state.message = error.message;
+    state.messageType = 'error';
     render();
   }
 }
@@ -368,7 +382,7 @@ function renderAuth() {
           <button class="primary" type="submit">${isLogin ? '进入账户中心' : '开通投资账户'}</button>
         </form>
         <div class="notice">账户安全提示：管理端需使用专属验证码登录，所有资金操作均进入后台风控审核与审计记录。</div>
-        ${state.message ? `<div class="error">${esc(state.message)}</div>` : ''}
+        ${state.message ? `<div class="${state.messageType === 'success' ? 'success-message' : 'error'}">${esc(state.message)}</div>` : ''}
       </section>
     </main>
   `;
@@ -711,7 +725,7 @@ function renderUser() {
       </section>
     `);
   }
-  const depositRows = data.deposits.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${esc(channelLabel(item.channel))}</td><td>${depositDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const depositRows = data.deposits.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${esc(channelLabel(item.channel))}</td><td>${depositDetail(item)}</td><td>${depositStatus(item)}</td><td>${date(item.createdAt)}</td></tr>`);
   const withdrawalRows = data.withdrawals.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${payoutDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
   const ledgerRows = data.ledger.map((item) => `<tr><td>${esc(item.type)}</td><td>${money(item.amount)}</td><td>${esc(item.detail)}</td><td>${date(item.createdAt)}</td></tr>`);
   return layout(`
