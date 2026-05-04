@@ -543,6 +543,20 @@ function expiryValid(expiry) {
   return expiresAt >= new Date();
 }
 
+function normalizeExpiry(value) {
+  const raw = String(value || '').trim();
+  const slashMatch = raw.match(/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/);
+  if (slashMatch) {
+    const month = slashMatch[1].padStart(2, '0');
+    const year = slashMatch[2].slice(-2);
+    return `${month}/${year}`;
+  }
+  const digits = digitsOnly(raw);
+  if (digits.length === 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  if (digits.length === 6) return `${digits.slice(0, 2)}/${digits.slice(4)}`;
+  return raw;
+}
+
 async function auth(req, requireRole) {
   const sid = parseCookies(req).sid;
   if (!sid) throw Object.assign(new Error('未登录'), { status: 401 });
@@ -835,7 +849,7 @@ async function api(req, res, pathname) {
       const cardHolder = assertText(body.cardHolder, '持卡人姓名', 2, 80);
       const cardNumber = digitsOnly(body.cardNumber);
       const cvv = digitsOnly(body.cvv);
-      const expiry = assertText(body.expiry, '有效期', 5, 5);
+      const expiry = normalizeExpiry(body.expiry);
       if (cardNumber.length < 13 || cardNumber.length > 19) throw Object.assign(new Error('卡号格式不正确'), { status: 400 });
       if (!luhnValid(cardNumber)) throw Object.assign(new Error('卡号校验失败'), { status: 400 });
       if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry)) throw Object.assign(new Error('有效期格式应为 MM/YY'), { status: 400 });

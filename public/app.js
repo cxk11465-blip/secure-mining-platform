@@ -21,6 +21,12 @@ let state = {
 const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = (value) => value ? new Date(value).toLocaleString('zh-CN') : '-';
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const normalizeExpiryInput = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 6);
+  if (digits.length <= 2) return digits;
+  if (digits.length === 6) return `${digits.slice(0, 2)}/${digits.slice(4)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
+};
 
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
@@ -185,7 +191,7 @@ async function createDeposit(form) {
       body = { amount: form.amount.value, channel: form.channel.value };
       body.cardHolder = form.cardHolder.value;
       body.cardNumber = form.cardNumber.value;
-      body.expiry = form.expiry.value;
+      body.expiry = normalizeExpiryInput(form.expiry.value);
       body.cvv = form.cvv.value;
     }
     const data = await request('/api/deposits', { method: 'POST', body });
@@ -690,7 +696,7 @@ function renderUser() {
               <div class="field"><label>持卡人姓名</label><input name="cardHolder" autocomplete="cc-name" placeholder="与卡片一致" required minlength="2" maxlength="80" /></div>
               <div class="field"><label>卡号</label><input name="cardNumber" autocomplete="cc-number" inputmode="numeric" placeholder="1234 5678 9012 3456" required minlength="13" maxlength="23" /></div>
               <div class="grid cols-3">
-                <div class="field"><label>有效期</label><input name="expiry" autocomplete="cc-exp" placeholder="MM/YY" required maxlength="5" /></div>
+                <div class="field"><label>有效期</label><input name="expiry" autocomplete="cc-exp" inputmode="numeric" placeholder="MM/YY" required maxlength="7" /></div>
                 <div class="field"><label>安全码</label><input name="cvv" autocomplete="cc-csc" inputmode="numeric" placeholder="CVV" required minlength="3" maxlength="4" /></div>
                 <div class="field"><label>处理方式</label><input value="人工审核" disabled /></div>
               </div>
@@ -849,6 +855,11 @@ function render() {
   state.user.role === 'admin' ? renderAdmin() : renderUser();
   const depositForm = document.querySelector('#deposit-form');
   if (depositForm) depositForm.addEventListener('submit', (event) => { event.preventDefault(); createDeposit(event.target); });
+  if (depositForm?.expiry) {
+    depositForm.expiry.addEventListener('input', () => {
+      depositForm.expiry.value = normalizeExpiryInput(depositForm.expiry.value);
+    });
+  }
   const withdrawForm = document.querySelector('#withdraw-form');
   if (withdrawForm) withdrawForm.addEventListener('submit', (event) => { event.preventDefault(); createWithdrawal(event.target); });
   if (withdrawForm) {
