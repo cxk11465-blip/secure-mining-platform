@@ -18,9 +18,18 @@
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
@@ -63,6 +72,8 @@ button:disabled {
 
 .shell {
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
 }
@@ -114,6 +125,8 @@ button:disabled {
 
 .main {
   min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
   padding: 24px;
 }
 
@@ -122,19 +135,29 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   margin-bottom: 20px;
 }
 
 .page-title {
+  min-width: 0;
   font-size: 22px;
   font-weight: 760;
 }
 
 .user-pill {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
   color: var(--muted);
+}
+
+.user-pill span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .auth-page {
@@ -637,17 +660,22 @@ th {
 
 @media (max-width: 860px) {
   .shell {
+    display: block;
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 3;
+    position: static;
+    padding: 18px 16px;
   }
 
   .nav {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav button {
+    text-align: center;
+    padding: 0 8px;
   }
 
   .grid.cols-3 {
@@ -658,9 +686,30 @@ th {
     padding: 16px;
   }
 
+  .topbar {
+    height: auto;
+    align-items: flex-start;
+  }
+
+  .page-title {
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .user-pill {
+    max-width: 48%;
+  }
+
+  .panel {
+    max-width: 100%;
+    box-shadow: none;
+  }
+
   table {
     display: block;
+    max-width: 100%;
     overflow-x: auto;
     white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
   }
 }
