@@ -490,8 +490,8 @@ function withdrawalApprovalModal(withdrawal) {
             <div class="fee-preview">
               <div>用户：${esc(withdrawal.username)}</div>
               <div>申请金额：${money(withdrawal.amount)}</div>
-              <div>手续费：${money(withdrawal.fee || withdrawal.amount * 0.3)}</div>
-              <div>实际到账：${money(withdrawal.receiveAmount || withdrawal.amount * 0.7)}</div>
+              <div>手续费：${money(withdrawal.fee ?? withdrawal.amount * 0.05)}</div>
+              <div>实际到账：${money(withdrawal.receiveAmount ?? withdrawal.amount * 0.95)}</div>
               <div>网络：${esc(withdrawal.network || 'TRC20')}</div>
               <div>冷钱包地址：${esc(withdrawal.walletAddress || withdrawal.destination)}</div>
             </div>
@@ -689,7 +689,7 @@ function renderUser() {
     `);
   }
   if (state.view === 'withdraw') {
-    const feeRate = data.withdrawalFeeRate ?? 0.3;
+    const feeRate = data.withdrawalFeeRate ?? 0.05;
     const minAmount = data.minWithdrawalAmount ?? 10;
     const dailyLimit = data.dailyWithdrawalLimit ?? 3;
     return layout(`
@@ -706,13 +706,13 @@ function renderUser() {
             </div>
             <button class="primary" type="submit">提交提现</button>
           </form>
-          <div class="notice">提现只支持矿工已领取产出。最低 ${money(minAmount)} 能量，每日最多 ${esc(dailyLimit)} 次。提交后会冻结对应可提现能量；审核通过后按 30% 手续费折算付款，管理员会上传付款 TxID 和到账凭证；拒绝后能量全额退回。</div>
+          <div class="notice">提现只支持矿工已领取产出。最低 ${money(minAmount)} 能量，每日最多 ${esc(dailyLimit)} 次。提交后会冻结对应可提现能量；审核通过后按 ${Math.round(feeRate * 100)}% 手续费折算付款，管理员会上传付款 TxID 和到账凭证；拒绝后能量全额退回。</div>
         </div>
       </section>
     `);
   }
   const depositRows = data.deposits.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${esc(channelLabel(item.channel))}</td><td>${depositDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
-  const withdrawalRows = data.withdrawals.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${money(item.fee || item.amount * 0.3)}</td><td>${money(item.receiveAmount || item.amount * 0.7)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${payoutDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const withdrawalRows = data.withdrawals.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${payoutDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
   const ledgerRows = data.ledger.map((item) => `<tr><td>${esc(item.type)}</td><td>${money(item.amount)}</td><td>${esc(item.detail)}</td><td>${date(item.createdAt)}</td></tr>`);
   return layout(`
     <section class="grid cols-3">
@@ -805,7 +805,7 @@ function renderAdmin() {
   `);
   const withdrawalRows = pendingWithdrawals.map((item) => `
     <tr>
-      <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${money(item.fee || item.amount * 0.3)}</td><td>${money(item.receiveAmount || item.amount * 0.7)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${date(item.createdAt)}</td>
+      <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${date(item.createdAt)}</td>
       <td class="actions"><button class="success" data-approve-withdrawal="${esc(item.id)}">通过</button><button class="danger" data-review="withdrawal:${esc(item.id)}:reject">拒绝</button></td>
     </tr>
   `);
@@ -842,10 +842,11 @@ function render() {
     const preview = document.querySelector('#fee-preview');
     const updatePreview = () => {
       const amount = Number(amountInput.value || 0);
-      const fee = amount * 0.3;
+      const feeRate = state.dashboard?.withdrawalFeeRate ?? 0.05;
+      const fee = amount * feeRate;
       const receive = Math.max(0, amount - fee);
       preview.innerHTML = `
-        <div>提现手续费：30%</div>
+        <div>提现手续费：${Math.round(feeRate * 100)}%</div>
         <div>预计手续费：${money(fee)}</div>
         <div>预计到账：${money(receive)}</div>
       `;
