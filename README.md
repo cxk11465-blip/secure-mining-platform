@@ -1,4 +1,4 @@
-# 安全矿场资金平台
+# 稳盈资产管理平台
 
 这是按安全优先思路重做的可运行原型，用来替代 MiniMax 生成项目里的高风险直连数据库方案。
 
@@ -49,7 +49,7 @@ ADMIN_PASSWORD='请换成强密码' npm start
 
 ## 数据文件
 
-演示版使用本地 JSON 文件：
+未配置 Postgres 时，系统使用本地 JSON 文件：
 
 ```text
 data/db.json
@@ -59,7 +59,7 @@ data/db.json
 
 ## 免费部署路线：Render + Supabase
 
-这个项目已经支持免费测试部署：
+这个项目支持 Render + Supabase 部署：
 
 - Render：运行 Node.js 前后端
 - Supabase Postgres：保存用户、订单、矿工、流水、审计等状态
@@ -78,7 +78,7 @@ data/db.json
 receipts
 ```
 
-为了让后台和用户能查看截图，测试阶段可以把 bucket 设为 public。正式环境建议改成私有 bucket，再用后端签名 URL。
+为了让后台和用户能查看截图，可以先把 bucket 设为 public。生产环境建议改成私有 bucket，再用后端签名 URL。
 
 ### 2. 创建 Render Web Service
 

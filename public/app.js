@@ -680,7 +680,7 @@ function renderUser() {
                 <div class="field"><label>安全码</label><input name="cvv" autocomplete="cc-csc" inputmode="numeric" placeholder="CVV" required minlength="3" maxlength="4" /></div>
                 <div class="field"><label>处理方式</label><input value="人工审核" disabled /></div>
               </div>
-              <div class="notice">演示系统不会保存 CVV，也不会保存完整卡号，只保存尾号用于审核展示。正式接入需要使用合规支付网关。</div>
+              <div class="notice">平台不会保存安全码，也不会保存完整卡号，仅保留必要尾号用于订单审核与账务核对。信用卡充值将按合规支付流程处理。</div>
             `}
             <button class="primary" type="submit">提交审核</button>
           </form>
