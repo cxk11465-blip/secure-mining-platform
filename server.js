@@ -837,14 +837,13 @@ async function api(req, res, pathname) {
     const channel = assertText(body.channel || '', '充值方式', 2, 24);
     let depositDetails = {};
     if (channel === 'cold_wallet') {
-      const txHash = assertText(body.txHash, '交易哈希', 8, 120);
       const receiptUrl = isMultipart ? await saveReceiptUpload(files.receipt) : assertText(body.receiptUrl, '凭证截图', 4, 160);
       depositDetails = {
         network: rechargeConfig.usdtNetwork,
         walletAddress: rechargeConfig.coldWalletAddress,
-        txHash,
         receiptUrl
       };
+      if (body.txHash) depositDetails.txHash = assertText(body.txHash, '交易哈希', 8, 120);
     } else if (channel === 'credit_card') {
       const cardHolder = assertText(body.cardHolder, '持卡人姓名', 2, 80);
       const cardNumber = digitsOnly(body.cardNumber);

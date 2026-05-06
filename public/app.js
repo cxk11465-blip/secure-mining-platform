@@ -68,8 +68,8 @@ function channelLabel(channel) {
 
 function depositDetail(item) {
   if (item.channel === 'cold_wallet') {
-    const receipt = item.details?.receiptUrl ? ` · <button class="link-button" data-proof="${esc(item.details.receiptUrl)}">查看截图</button>` : '';
-    return `TxID: ${esc(item.details?.txHash || '-')}${receipt}`;
+    if (item.details?.receiptUrl) return `<button class="link-button" data-proof="${esc(item.details.receiptUrl)}">查看截图</button>`;
+    return '已提交凭证';
   }
   if (item.channel === 'credit_card') return `尾号 ${item.details?.cardLast4 || '-'} · ${item.details?.expiry || '-'}`;
   return '-';
@@ -185,7 +185,6 @@ async function createDeposit(form) {
       body = new FormData();
       body.append('amount', form.amount.value);
       body.append('channel', form.channel.value);
-      body.append('txHash', form.txHash.value);
       if (form.receipt.files[0]) body.append('receipt', form.receipt.files[0]);
     } else {
       body = { amount: form.amount.value, channel: form.channel.value };
@@ -689,7 +688,6 @@ function renderUser() {
                   <button class="ghost" type="button" id="copy-wallet">复制</button>
                 </div>
               </div>
-              <div class="field"><label>转账哈希 / TxID</label><input name="txHash" placeholder="完成转账后填写交易哈希" required minlength="8" maxlength="120" /></div>
               <div class="field"><label>转账凭证截图</label><input name="receipt" type="file" accept="image/png,image/jpeg,image/webp" required /></div>
               <div class="notice">请确认网络为 ${esc(config.usdtNetwork || 'TRC20')}。后台审核通过后，充值金额会转换为可用能量。</div>
             ` : `
@@ -772,7 +770,7 @@ function renderAdmin() {
         <td>${statusTag(item.status)}</td>
         <td>${esc(item.riskReason || '-')}</td>
         <td>${date(item.lastLoginAt)}</td>
-        <td class="actions">
+        <td class="actions table-actions">
           <button class="ghost" data-user-detail="${esc(item.id)}">详情</button>
           <button class="success" data-user-status="${esc(item.id)}:active" ${item.status === 'active' ? 'disabled' : ''}>恢复</button>
           <button class="warning" data-user-status="${esc(item.id)}:frozen" ${item.role === 'admin' || item.status === 'frozen' ? 'disabled' : ''}>冻结</button>
@@ -811,7 +809,7 @@ function renderAdmin() {
   const withdrawalQuery = (filters.withdrawalQuery || '').trim().toLowerCase();
   const pendingDeposits = data.deposits.filter((item) => item.status === 'pending').filter((item) => {
     if (!depositQuery) return true;
-    return [item.id, item.username, item.details?.txHash, item.details?.cardLast4].some((value) => String(value || '').toLowerCase().includes(depositQuery));
+    return [item.id, item.username, item.details?.cardLast4].some((value) => String(value || '').toLowerCase().includes(depositQuery));
   });
   const pendingWithdrawals = data.withdrawals.filter((item) => item.status === 'pending').filter((item) => {
     if (!withdrawalQuery) return true;
@@ -820,13 +818,13 @@ function renderAdmin() {
   const depositRows = pendingDeposits.map((item) => `
     <tr>
       <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${esc(channelLabel(item.channel))}</td><td>${depositDetail(item)}</td><td>${date(item.createdAt)}</td>
-      <td class="actions"><button class="success" data-review="deposit:${esc(item.id)}:approve">通过</button><button class="danger" data-review="deposit:${esc(item.id)}:reject">拒绝</button></td>
+      <td class="actions table-actions"><button class="success" data-review="deposit:${esc(item.id)}:approve">通过</button><button class="danger" data-review="deposit:${esc(item.id)}:reject">拒绝</button></td>
     </tr>
   `);
   const withdrawalRows = pendingWithdrawals.map((item) => `
     <tr>
       <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${date(item.createdAt)}</td>
-      <td class="actions"><button class="success" data-approve-withdrawal="${esc(item.id)}">通过</button><button class="danger" data-review="withdrawal:${esc(item.id)}:reject">拒绝</button></td>
+      <td class="actions table-actions"><button class="success" data-approve-withdrawal="${esc(item.id)}">通过</button><button class="danger" data-review="withdrawal:${esc(item.id)}:reject">拒绝</button></td>
     </tr>
   `);
   return layout(`
@@ -838,7 +836,7 @@ function renderAdmin() {
     <section class="grid" style="margin-top:16px">
       <div class="panel">
         <div class="panel-head"><div class="panel-title">充值审核</div></div>
-        <div class="toolbar"><input id="deposit-search" value="${esc(filters.depositQuery || '')}" placeholder="搜索用户名、订单号、TxID、卡尾号" /><span>${pendingDeposits.length} 条待审</span></div>
+        <div class="toolbar"><input id="deposit-search" value="${esc(filters.depositQuery || '')}" placeholder="搜索用户名、订单号、卡尾号" /><span>${pendingDeposits.length} 条待审</span></div>
         ${table(['用户', '金额', '渠道', '凭证', '时间', '操作'], depositRows)}
       </div>
       <div class="panel">
