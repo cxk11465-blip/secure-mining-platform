@@ -39,7 +39,9 @@ const useSupabaseStorage = Boolean(supabaseUrl && supabaseServiceRoleKey);
 let pgPool = null;
 let postgresStatus = 'disabled';
 let pgSchemaReady = false;
-const withdrawalFeeRate = 0.05;
+const withdrawalFeeRate = 0.10;
+const referralRewardRate = 0.05;
+const platformFeeRate = Math.max(0, Math.round((withdrawalFeeRate - referralRewardRate) * 10000) / 10000);
 const minWithdrawalAmount = Number(process.env.MIN_WITHDRAWAL_AMOUNT || 10);
 const dailyWithdrawalLimit = Number(process.env.DAILY_WITHDRAWAL_LIMIT || 3);
 const adminLoginCode = process.env.ADMIN_LOGIN_CODE || '';
@@ -196,6 +198,28 @@ function now() {
   return new Date().toISOString();
 }
 
+function cleanReferralCode(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function generateReferralCode(username, users = []) {
+  const base = cleanReferralCode(username).slice(0, 8) || 'USER';
+  for (let i = 0; i < 20; i += 1) {
+    const suffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const code = `${base}${suffix}`.slice(0, 14);
+    if (!users.some((item) => item.referralCode === code)) return code;
+  }
+  return crypto.randomBytes(7).toString('hex').toUpperCase();
+}
+
+function ensureReferralState(db) {
+  db.referralRewards ||= [];
+  for (const user of db.users || []) {
+    if (!user.referralCode) user.referralCode = generateReferralCode(user.username, db.users);
+    user.referralRewardBalance = Number(user.referralRewardBalance || 0);
+  }
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.pbkdf2Sync(password, salt, 210000, 32, 'sha256').toString('hex');
   return `pbkdf2_sha256$210000$${salt}$${hash}`;
@@ -218,6 +242,10 @@ function publicUser(user) {
     frozen: user.frozen,
     energy: user.energy,
     withdrawableEnergy: user.withdrawableEnergy || 0,
+    referralCode: user.referralCode || '',
+    referrerId: user.referrerId || '',
+    referrerUsername: user.referrerUsername || '',
+    referralRewardBalance: user.referralRewardBalance || 0,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
     riskReason: user.riskReason || '',
@@ -233,10 +261,13 @@ function ensureOperationalUser(user) {
 }
 
 function userStats(db, user) {
+  ensureReferralState(db);
   const deposits = db.deposits.filter((item) => item.userId === user.id);
   const withdrawals = db.withdrawals.filter((item) => item.userId === user.id);
   const miners = (db.userMiners || []).filter((item) => item.userId === user.id);
   const ledger = db.ledger.filter((item) => item.userId === user.id);
+  const invitedUsers = db.users.filter((item) => item.referrerId === user.id);
+  const referralRewards = (db.referralRewards || []).filter((item) => item.referrerId === user.id);
   return {
     ...publicUser(user),
     totalRecharge: deposits.filter((item) => item.status === 'approved').reduce((sum, item) => sum + Number(item.amount || 0), 0),
@@ -245,7 +276,9 @@ function userStats(db, user) {
     minerCount: miners.length,
     activeMinerCount: miners.filter((item) => minerSnapshot(item).status === 'running').length,
     totalMined: ledger.filter((item) => item.type === 'miner_claim').reduce((sum, item) => sum + Number(item.amount || 0), 0),
-    totalGameReward: ledger.filter((item) => item.type === 'game_reward').reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    totalGameReward: ledger.filter((item) => item.type === 'game_reward').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    invitedCount: invitedUsers.length,
+    totalReferralReward: referralRewards.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   };
 }
 
@@ -267,11 +300,13 @@ async function initialDb() {
     passwordHash: hashPassword(password),
     role: 'admin',
     status: 'active',
-      balance: 0,
-      frozen: 0,
-      energy: 0,
-      withdrawableEnergy: 0,
-      createdAt: now()
+    balance: 0,
+    frozen: 0,
+    energy: 0,
+    withdrawableEnergy: 0,
+    referralCode: 'ADMIN',
+    referralRewardBalance: 0,
+    createdAt: now()
   };
   if (!process.env.ADMIN_PASSWORD) {
     await writeFile(adminBootstrapPath, `管理员账号：admin\n初始密码：${password}\n首次登录后请立刻修改并删除此文件。\n`, { flag: 'wx' }).catch(() => {});
@@ -284,6 +319,7 @@ async function initialDb() {
     withdrawals: [],
     gamePlays: [],
     userMiners: [],
+    referralRewards: [],
     ledger: [],
     audit: [{
       id: id('aud'),
@@ -334,6 +370,7 @@ async function withDb(mutator) {
   const run = writeQueue.then(async () => {
     try {
       const db = await loadDb();
+      ensureReferralState(db);
       const result = await mutator(db);
       await saveDb(db);
       return result;
@@ -341,6 +378,7 @@ async function withDb(mutator) {
       if (!usePostgres || !isPostgresFailure(error)) throw error;
       await fallbackToJsonStorage(error);
       const db = await loadDb();
+      ensureReferralState(db);
       const result = await mutator(db);
       await saveDb(db);
       return result;
@@ -353,11 +391,13 @@ async function withDb(mutator) {
 async function readDb(fn) {
   try {
     const db = await loadDb();
+    ensureReferralState(db);
     return fn(db);
   } catch (error) {
     if (!usePostgres || !isPostgresFailure(error)) throw error;
     await fallbackToJsonStorage(error);
     const db = await loadDb();
+    ensureReferralState(db);
     return fn(db);
   }
 }
@@ -640,10 +680,15 @@ async function api(req, res, pathname) {
     const body = await readBody(req);
     const username = assertText(body.username, '用户名', 3, 32);
     const password = assertText(body.password, '密码', 8, 128);
+    const referralCode = cleanReferralCode(body.referralCode || body.inviteCode || '');
     return withDb((db) => {
       if (db.users.some((item) => item.username.toLowerCase() === username.toLowerCase())) {
         throw Object.assign(new Error('用户名已存在'), { status: 409 });
       }
+      const referrer = referralCode
+        ? db.users.find((item) => cleanReferralCode(item.referralCode) === referralCode || cleanReferralCode(item.username) === referralCode)
+        : null;
+      if (referralCode && !referrer) throw Object.assign(new Error('邀请码不存在'), { status: 400 });
       const user = {
         id: id('usr'),
         username,
@@ -654,10 +699,14 @@ async function api(req, res, pathname) {
         frozen: 0,
         energy: 0,
         withdrawableEnergy: 0,
+        referralCode: generateReferralCode(username, db.users),
+        referrerId: referrer?.id || '',
+        referrerUsername: referrer?.username || '',
+        referralRewardBalance: 0,
         createdAt: now()
       };
       db.users.push(user);
-      audit(db, user, 'user_registered', `用户 ${username} 注册`);
+      audit(db, user, 'user_registered', `用户 ${username} 注册${referrer ? `，邀请人 ${referrer.username}` : ''}`);
       return sendJson(res, 201, { user: publicUser(user) });
     });
   }
@@ -708,6 +757,8 @@ async function api(req, res, pathname) {
       games,
       gameCooldownMs,
       withdrawalFeeRate,
+      referralRewardRate,
+      platformFeeRate,
       minWithdrawalAmount,
       dailyWithdrawalLimit,
       rechargeConfig,
@@ -716,7 +767,12 @@ async function api(req, res, pathname) {
       userMiners: (db.userMiners || []).filter((item) => item.userId === user.id).map(minerSnapshot).slice(0, 50),
       deposits: db.deposits.filter((item) => item.userId === user.id).slice(0, 20),
       withdrawals: db.withdrawals.filter((item) => item.userId === user.id).slice(0, 20),
-      ledger: db.ledger.filter((item) => item.userId === user.id).slice(0, 20)
+      ledger: db.ledger.filter((item) => item.userId === user.id).slice(0, 20),
+      referralRewards: (db.referralRewards || []).filter((item) => item.referrerId === user.id).slice(0, 20),
+      invitedUsers: db.users
+        .filter((item) => item.referrerId === user.id)
+        .map((item) => ({ id: item.id, username: item.username, createdAt: item.createdAt, status: item.status }))
+        .slice(0, 20)
     }));
   }
 
@@ -888,6 +944,9 @@ async function api(req, res, pathname) {
       todayStart.setHours(0, 0, 0, 0);
       const todayCount = db.withdrawals.filter((item) => item.userId === fresh.id && new Date(item.createdAt) >= todayStart).length;
       if (todayCount >= dailyWithdrawalLimit) throw Object.assign(new Error(`每日最多提交 ${dailyWithdrawalLimit} 次提现申请`), { status: 429 });
+      const referrer = fresh.referrerId ? db.users.find((item) => item.id === fresh.referrerId) : null;
+      const referralReward = referrer ? Math.round(amount * referralRewardRate * 100) / 100 : 0;
+      const platformFee = Math.round((fee - referralReward) * 100) / 100;
       fresh.energy = Math.round((fresh.energy - amount) * 100) / 100;
       fresh.withdrawableEnergy = Math.round(((fresh.withdrawableEnergy || 0) - amount) * 100) / 100;
       fresh.frozen = Math.round((fresh.frozen + amount) * 100) / 100;
@@ -899,6 +958,11 @@ async function api(req, res, pathname) {
         fee,
         receiveAmount,
         feeRate: withdrawalFeeRate,
+        platformFee,
+        referralReward,
+        referralRewardRate: referrer ? referralRewardRate : 0,
+        referrerId: referrer?.id || '',
+        referrerUsername: referrer?.username || '',
         method: 'cold_wallet',
         network: rechargeConfig.usdtNetwork,
         walletAddress,
@@ -908,8 +972,8 @@ async function api(req, res, pathname) {
         reviewedAt: null
       };
       db.withdrawals.unshift(withdrawal);
-      addLedger(db, fresh.id, 'withdraw_freeze', -amount, withdrawal.id, `提现申请冻结，手续费 ${fee}，预计到账 ${receiveAmount}`);
-      audit(db, fresh, 'withdrawal_created', `提交提现申请 ${amount}，手续费 ${fee}，预计到账 ${receiveAmount}`);
+      addLedger(db, fresh.id, 'withdraw_freeze', -amount, withdrawal.id, `提现申请冻结，手续费 ${fee}，预计到账 ${receiveAmount}${referrer ? `，邀请奖励待结算 ${referralReward}` : ''}`);
+      audit(db, fresh, 'withdrawal_created', `提交提现申请 ${amount}，手续费 ${fee}，预计到账 ${receiveAmount}${referrer ? `，邀请人 ${referrer.username}` : ''}`);
       return sendJson(res, 201, { withdrawal, user: publicUser(fresh) });
     });
   }
@@ -922,6 +986,7 @@ async function api(req, res, pathname) {
       withdrawals: db.withdrawals,
       userMiners: db.userMiners || [],
       gamePlays: db.gamePlays || [],
+      referralRewards: db.referralRewards || [],
       ledger: db.ledger.slice(0, 100),
       audit: db.audit.slice(0, 100)
     }));
@@ -1023,11 +1088,38 @@ async function api(req, res, pathname) {
       } else {
         const fee = withdrawal.fee ?? Math.round(withdrawal.amount * withdrawalFeeRate * 100) / 100;
         const receiveAmount = withdrawal.receiveAmount ?? Math.round((withdrawal.amount - fee) * 100) / 100;
+        const referrer = withdrawal.referrerId ? db.users.find((item) => item.id === withdrawal.referrerId) : null;
+        const referralReward = referrer ? Math.round((withdrawal.referralReward ?? withdrawal.amount * referralRewardRate) * 100) / 100 : 0;
+        const platformFee = Math.round((fee - referralReward) * 100) / 100;
         withdrawal.fee = fee;
         withdrawal.receiveAmount = receiveAmount;
         withdrawal.feeRate = withdrawal.feeRate ?? withdrawalFeeRate;
+        withdrawal.platformFee = platformFee;
+        withdrawal.referralReward = referralReward;
+        withdrawal.referralRewardRate = referrer ? referralRewardRate : 0;
         withdrawal.payout = payoutProof;
         addLedger(db, target.id, 'withdraw_approved', -fee, withdrawal.id, `提现审核通过，到账 ${receiveAmount}，手续费 ${fee}`);
+        if (referrer && referralReward > 0) {
+          referrer.energy = Math.round((Number(referrer.energy || 0) + referralReward) * 100) / 100;
+          referrer.withdrawableEnergy = Math.round((Number(referrer.withdrawableEnergy || 0) + referralReward) * 100) / 100;
+          referrer.referralRewardBalance = Math.round((Number(referrer.referralRewardBalance || 0) + referralReward) * 100) / 100;
+          const reward = {
+            id: id('ref'),
+            referrerId: referrer.id,
+            referrerUsername: referrer.username,
+            invitedUserId: target.id,
+            invitedUsername: target.username,
+            withdrawalId: withdrawal.id,
+            amount: referralReward,
+            sourceAmount: withdrawal.amount,
+            fee,
+            status: 'settled',
+            createdAt: now()
+          };
+          db.referralRewards.unshift(reward);
+          addLedger(db, referrer.id, 'referral_reward', referralReward, reward.id, `邀请用户 ${target.username} 提现审核通过，奖励 ${referralReward}`);
+          audit(db, user, 'referral_reward_settled', `结算邀请奖励 ${referralReward} 给 ${referrer.username}，来源用户 ${target.username}`);
+        }
       }
       audit(db, user, `withdrawal_${decision}`, `${decision === 'approve' ? '通过' : '拒绝'} ${withdrawal.username} 提现 ${withdrawal.amount}`);
       return sendJson(res, 200, { withdrawal, user: publicUser(target) });

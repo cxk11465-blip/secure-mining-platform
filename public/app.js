@@ -21,6 +21,8 @@ let state = {
 const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = (value) => value ? new Date(value).toLocaleString('zh-CN') : '-';
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const initialReferralCode = new URLSearchParams(window.location.search).get('ref') || '';
+const referralLink = (code) => `${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(code || '')}`;
 const normalizeExpiryInput = (value) => {
   const digits = String(value || '').replace(/\D/g, '').slice(0, 6);
   if (digits.length <= 2) return digits;
@@ -145,7 +147,8 @@ async function register(form) {
       method: 'POST',
       body: {
         username: form.username.value,
-        password: form.password.value
+        password: form.password.value,
+        referralCode: form.referralCode?.value || ''
       }
     });
     state.authMode = 'login';
@@ -383,6 +386,10 @@ function renderAuth() {
               <label>确认密码</label>
               <input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
             </div>
+            <div class="field">
+              <label>邀请码</label>
+              <input name="referralCode" value="${esc(initialReferralCode)}" autocomplete="off" placeholder="没有可留空" maxlength="24" />
+            </div>
           `}
           <button class="primary" type="submit">${isLogin ? '进入账户中心' : '开通投资账户'}</button>
         </form>
@@ -509,8 +516,9 @@ function withdrawalApprovalModal(withdrawal) {
             <div class="fee-preview">
               <div>用户：${esc(withdrawal.username)}</div>
               <div>申请金额：${money(withdrawal.amount)}</div>
-              <div>手续费：${money(withdrawal.fee ?? withdrawal.amount * 0.05)}</div>
-              <div>实际到账：${money(withdrawal.receiveAmount ?? withdrawal.amount * 0.95)}</div>
+              <div>手续费：${money(withdrawal.fee ?? withdrawal.amount * 0.10)}</div>
+              ${withdrawal.referrerUsername ? `<div>邀请奖励：${esc(withdrawal.referrerUsername)} 获得 ${money(withdrawal.referralReward || 0)}</div>` : ''}
+              <div>实际到账：${money(withdrawal.receiveAmount ?? withdrawal.amount * 0.90)}</div>
               <div>网络：${esc(withdrawal.network || 'TRC20')}</div>
               <div>冷钱包地址：${esc(withdrawal.walletAddress || withdrawal.destination)}</div>
             </div>
@@ -545,6 +553,8 @@ function userDetailModal(user) {
             <div>风控备注：${esc(user.riskNote || '-')}</div>
             <div>最近处理：${esc(user.statusUpdatedBy || '-')} · ${date(user.statusUpdatedAt)}</div>
             <div>总充值：${money(user.totalRecharge)}，累计到账提现：${money(user.totalWithdrawReceived)}</div>
+            <div>邀请码：${esc(user.referralCode || '-')}，邀请人：${esc(user.referrerUsername || '-')}</div>
+            <div>邀请人数：${esc(user.invitedCount || 0)}，累计邀请奖励：${money(user.totalReferralReward || user.referralRewardBalance || 0)}</div>
             <div>矿工：${esc(user.activeMinerCount)} 运行中 / ${esc(user.minerCount)} 总数</div>
             <div>累计领取产出：${money(user.totalMined)}</div>
             <div>游戏辅助奖励：${money(user.totalGameReward)}</div>
@@ -707,7 +717,9 @@ function renderUser() {
     `);
   }
   if (state.view === 'withdraw') {
-    const feeRate = data.withdrawalFeeRate ?? 0.05;
+    const feeRate = data.withdrawalFeeRate ?? 0.10;
+    const referralRate = data.referralRewardRate ?? 0.05;
+    const hasReferrer = Boolean(data.user.referrerId);
     const minAmount = data.minWithdrawalAmount ?? 10;
     const dailyLimit = data.dailyWithdrawalLimit ?? 3;
     return layout(`
@@ -724,23 +736,43 @@ function renderUser() {
             </div>
             <button class="primary" type="submit">提交提现</button>
           </form>
-          <div class="notice">提现只支持矿工已领取产出。最低 ${money(minAmount)} 能量，每日最多 ${esc(dailyLimit)} 次。提交后会冻结对应可提现能量；审核通过后按 ${Math.round(feeRate * 100)}% 手续费折算付款，管理员会上传付款 TxID 和到账凭证；拒绝后能量全额退回。</div>
+          <div class="notice">提现只支持矿工已领取产出。最低 ${money(minAmount)} 能量，每日最多 ${esc(dailyLimit)} 次。提交后会冻结对应可提现能量；审核通过后按 ${Math.round(feeRate * 100)}% 手续费折算付款${hasReferrer ? `，其中 ${Math.round(referralRate * 100)}% 作为邀请奖励结算给 ${esc(data.user.referrerUsername)}` : ''}；拒绝后能量全额退回。</div>
         </div>
       </section>
     `);
   }
   const depositRows = data.deposits.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${esc(channelLabel(item.channel))}</td><td>${depositDetail(item)}</td><td>${depositStatus(item)}</td><td>${date(item.createdAt)}</td></tr>`);
-  const withdrawalRows = data.withdrawals.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${payoutDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const withdrawalRows = data.withdrawals.map((item) => `<tr><td>${esc(item.id)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.10)}</td><td>${money(item.receiveAmount ?? item.amount * 0.90)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${payoutDetail(item)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
   const ledgerRows = data.ledger.map((item) => `<tr><td>${esc(item.type)}</td><td>${money(item.amount)}</td><td>${esc(item.detail)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const referralRows = (data.referralRewards || []).map((item) => `<tr><td>${esc(item.invitedUsername)}</td><td>${money(item.sourceAmount)}</td><td>${money(item.amount)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const inviteRows = (data.invitedUsers || []).map((item) => `<tr><td>${esc(item.username)}</td><td>${statusTag(item.status)}</td><td>${date(item.createdAt)}</td></tr>`);
+  const inviteCode = data.user.referralCode || '';
   return layout(`
     <section class="grid cols-3">
       <div class="panel stat"><div class="stat-label">可提现能量</div><div class="stat-value">${money(data.user.withdrawableEnergy || 0)}</div></div>
       <div class="panel stat"><div class="stat-label">冻结能量</div><div class="stat-value">${money(data.user.frozen)}</div></div>
       <div class="panel stat"><div class="stat-label">总能量</div><div class="stat-value">${money(data.user.energy)}</div></div>
     </section>
+    <section class="panel" style="margin-top:16px">
+      <div class="panel-head"><div class="panel-title">邀请奖励</div></div>
+      <div class="panel-body">
+        <div class="grid cols-3">
+          <div class="fee-preview"><div>邀请码</div><strong>${esc(inviteCode || '-')}</strong></div>
+          <div class="fee-preview"><div>已邀请用户</div><strong>${esc((data.invitedUsers || []).length)}</strong></div>
+          <div class="fee-preview"><div>累计邀请奖励</div><strong>${money(data.user.referralRewardBalance || 0)}</strong></div>
+        </div>
+        <div class="copy-row" style="margin-top:12px">
+          <div class="address-box">${esc(referralLink(inviteCode))}</div>
+          <button class="ghost" type="button" id="copy-referral" data-link="${esc(referralLink(inviteCode))}">复制</button>
+        </div>
+        <div class="notice">被邀请用户提现审核通过后，手续费按 ${Math.round((data.withdrawalFeeRate || 0.10) * 100)}% 扣除，其中 ${Math.round((data.referralRewardRate || 0.05) * 100)}% 会结算为邀请奖励。</div>
+      </div>
+    </section>
     <section class="grid" style="margin-top:16px">
       <div class="panel"><div class="panel-head"><div class="panel-title">充值记录</div></div>${table(['订单号', '金额', '渠道', '凭证', '状态', '时间'], depositRows)}</div>
       <div class="panel"><div class="panel-head"><div class="panel-title">提现记录</div></div>${table(['订单号', '申请金额', '手续费', '预计到账', '冷钱包地址', '到账记录', '状态', '时间'], withdrawalRows)}</div>
+      <div class="panel"><div class="panel-head"><div class="panel-title">邀请用户</div></div>${table(['用户', '状态', '注册时间'], inviteRows)}</div>
+      <div class="panel"><div class="panel-head"><div class="panel-title">邀请奖励记录</div></div>${table(['来源用户', '提现金额', '奖励', '时间'], referralRows)}</div>
       <div class="panel"><div class="panel-head"><div class="panel-title">资金流水</div></div>${table(['类型', '金额', '说明', '时间'], ledgerRows)}</div>
     </section>
   `);
@@ -765,6 +797,9 @@ function renderAdmin() {
         <td>${money(item.withdrawableEnergy || 0)}</td>
         <td>${money(item.totalRecharge)}</td>
         <td>${money(item.totalWithdrawReceived)}</td>
+        <td>${esc(item.referrerUsername || '-')}</td>
+        <td>${esc(item.invitedCount || 0)}</td>
+        <td>${money(item.totalReferralReward || item.referralRewardBalance || 0)}</td>
         <td>${esc(item.activeMinerCount)} / ${esc(item.minerCount)}</td>
         <td>${money(item.totalMined)}</td>
         <td>${statusTag(item.status)}</td>
@@ -794,7 +829,7 @@ function renderAdmin() {
             </select>
             <span>${filteredUsers.length} / ${data.users.length} 个用户</span>
           </div>
-          ${table(['用户', '角色', '能量', '可提现', '总充值', '到账提现', '矿工', '累计产出', '状态', '原因', '最近登录', '操作'], rows)}
+          ${table(['用户', '角色', '能量', '可提现', '总充值', '到账提现', '邀请人', '邀请数', '邀请奖励', '矿工', '累计产出', '状态', '原因', '最近登录', '操作'], rows)}
         </section>
         <section class="panel"><div class="panel-head"><div class="panel-title">最近流水</div></div>${table(['用户ID', '类型', '金额', '说明', '时间'], ledgerRows)}</section>
       </div>
@@ -823,7 +858,7 @@ function renderAdmin() {
   `);
   const withdrawalRows = pendingWithdrawals.map((item) => `
     <tr>
-      <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.05)}</td><td>${money(item.receiveAmount ?? item.amount * 0.95)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${date(item.createdAt)}</td>
+      <td>${esc(item.username)}</td><td>${money(item.amount)}</td><td>${money(item.fee ?? item.amount * 0.10)}</td><td>${money(item.receiveAmount ?? item.amount * 0.90)}</td><td>${esc(item.referrerUsername || '-')}</td><td>${money(item.referralReward || 0)}</td><td>${esc(item.walletAddress || item.destination)}</td><td>${date(item.createdAt)}</td>
       <td class="actions table-actions"><button class="success" data-approve-withdrawal="${esc(item.id)}">通过</button><button class="danger" data-review="withdrawal:${esc(item.id)}:reject">拒绝</button></td>
     </tr>
   `);
@@ -842,7 +877,7 @@ function renderAdmin() {
       <div class="panel">
         <div class="panel-head"><div class="panel-title">提现审核</div></div>
         <div class="toolbar"><input id="withdrawal-search" value="${esc(filters.withdrawalQuery || '')}" placeholder="搜索用户名、订单号、冷钱包地址" /><span>${pendingWithdrawals.length} 条待审</span></div>
-        ${table(['用户', '申请金额', '手续费', '预计到账', '冷钱包地址', '时间', '操作'], withdrawalRows)}
+        ${table(['用户', '申请金额', '手续费', '预计到账', '邀请人', '邀请奖励', '冷钱包地址', '时间', '操作'], withdrawalRows)}
       </div>
     </section>
   `);
@@ -865,12 +900,18 @@ function render() {
     const preview = document.querySelector('#fee-preview');
     const updatePreview = () => {
       const amount = Number(amountInput.value || 0);
-      const feeRate = state.dashboard?.withdrawalFeeRate ?? 0.05;
+      const feeRate = state.dashboard?.withdrawalFeeRate ?? 0.10;
+      const referralRate = state.dashboard?.referralRewardRate ?? 0.05;
+      const platformRate = state.dashboard?.platformFeeRate ?? Math.max(0, feeRate - referralRate);
+      const hasReferrer = Boolean(state.dashboard?.user?.referrerId);
       const fee = amount * feeRate;
       const receive = Math.max(0, amount - fee);
+      const referralReward = hasReferrer ? amount * referralRate : 0;
+      const platformFee = hasReferrer ? amount * platformRate : fee;
       preview.innerHTML = `
         <div>提现手续费：${Math.round(feeRate * 100)}%</div>
         <div>预计手续费：${money(fee)}</div>
+        ${hasReferrer ? `<div>手续费拆分：平台 ${money(platformFee)}，邀请奖励 ${money(referralReward)}</div>` : ''}
         <div>预计到账：${money(receive)}</div>
       `;
     };
@@ -951,6 +992,14 @@ function render() {
       const text = document.querySelector('#wallet-address')?.textContent || '';
       await navigator.clipboard.writeText(text).catch(() => {});
       state.message = '已复制冷钱包地址';
+      render();
+    });
+  }
+  const copyReferral = document.querySelector('#copy-referral');
+  if (copyReferral) {
+    copyReferral.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(copyReferral.dataset.link || '').catch(() => {});
+      state.message = '邀请链接已复制';
       render();
     });
   }
