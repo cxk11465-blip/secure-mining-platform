@@ -43,7 +43,7 @@ const withdrawalFeeRate = 0.10;
 const referralRewardRate = 0.05;
 const platformFeeRate = Math.max(0, Math.round((withdrawalFeeRate - referralRewardRate) * 10000) / 10000);
 const minWithdrawalAmount = Number(process.env.MIN_WITHDRAWAL_AMOUNT || 10);
-const dailyWithdrawalLimit = Number(process.env.DAILY_WITHDRAWAL_LIMIT || 3);
+const dailyWithdrawalLimit = Number(process.env.DAILY_WITHDRAWAL_LIMIT || 1);
 const adminLoginCode = process.env.ADMIN_LOGIN_CODE || '';
 const rechargeConfig = {
   usdtNetwork: 'TRC20',

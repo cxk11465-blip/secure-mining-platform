@@ -721,7 +721,7 @@ function renderUser() {
     const referralRate = data.referralRewardRate ?? 0.05;
     const hasReferrer = Boolean(data.user.referrerId);
     const minAmount = data.minWithdrawalAmount ?? 10;
-    const dailyLimit = data.dailyWithdrawalLimit ?? 3;
+    const dailyLimit = data.dailyWithdrawalLimit ?? 1;
     return layout(`
       <section class="panel">
         <div class="panel-head"><div class="panel-title">提交提现申请</div></div>
