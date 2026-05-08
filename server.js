@@ -652,6 +652,10 @@ function activeMinerCost(db, userId) {
     .reduce((sum, item) => sum + Number(item.cost || 0), 0);
 }
 
+function activeMiner(db, userId) {
+  return (db.userMiners || []).find((item) => item.userId === userId && minerSnapshot(item).status === 'running') || null;
+}
+
 function gameReward(game, db, userId) {
   if (game.rewardMode === 'flat') return game.reward;
   const activeCost = activeMinerCost(db, userId);
@@ -790,6 +794,8 @@ async function api(req, res, pathname) {
     return withDb((db) => {
       db.userMiners ||= [];
       const fresh = db.users.find((item) => item.id === user.id);
+      const runningMiner = activeMiner(db, fresh.id);
+      if (runningMiner) throw Object.assign(new Error('当前已有运行中的矿工，请等待本轮挖矿结束后再购买'), { status: 400 });
       const totalCost = Math.round(plan.cost * quantity * 100) / 100;
       if (fresh.energy < totalCost) throw Object.assign(new Error('能量不足，请先充值或领取产出'), { status: 400 });
       fresh.energy = Math.round((fresh.energy - totalCost) * 100) / 100;

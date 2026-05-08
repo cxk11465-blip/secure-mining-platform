@@ -605,6 +605,7 @@ function renderUser() {
   const data = state.dashboard;
   if (!data) return layout('<div class="empty">加载中...</div>');
   if (state.view === 'miners') {
+    const runningMiner = (data.userMiners || []).find((miner) => miner.status === 'running');
     const planCards = (data.minerPlans || []).map((plan) => `
       <article class="panel game-card">
         <div class="miner-visual"></div>
@@ -612,7 +613,7 @@ function renderUser() {
           <div class="game-title">${esc(plan.name)} · ${money(plan.cost)} 能量</div>
           <div class="game-desc">${esc(plan.durationDays)} 天周期，每小时约 ${esc(plan.hourlyOutput)} 能量，总产出 ${money(plan.totalOutput)} 能量。</div>
         </div>
-        <button class="primary" data-buy-miner="${esc(plan.id)}" ${data.user.energy < plan.cost ? 'disabled' : ''}>${data.user.energy < plan.cost ? '能量不足' : '购买矿工'}</button>
+        <button class="primary" data-buy-miner="${esc(plan.id)}" ${runningMiner || data.user.energy < plan.cost ? 'disabled' : ''}>${runningMiner ? '等待本轮结束' : data.user.energy < plan.cost ? '能量不足' : '购买矿工'}</button>
       </article>
     `).join('');
     const minerRows = (data.userMiners || []).map((miner) => `
@@ -638,7 +639,7 @@ function renderUser() {
         </div>
         ${table(['矿工', '消耗', '周期', '已领/总产出', '进度', '可领取', '操作'], minerRows)}
       </section>
-      <div class="notice">矿工产出按真实时间线性增长。购买后能量会扣除，领取时由后端计算可领取产出。</div>
+      <div class="notice">${runningMiner ? `当前已有运行中的矿工：${esc(runningMiner.planName)}，进度 ${esc(runningMiner.progress)}%。本轮结束后才能再次购买。` : '矿工产出按真实时间线性增长。购买后能量会扣除，领取时由后端计算可领取产出。'}</div>
     `);
   }
   if (state.view === 'games') {
